@@ -47,7 +47,6 @@ export interface ImageFieldSchema extends BaseFieldSchema {
 
 export interface CustomFieldSchema extends BaseFieldSchema {
   type: string;
-  // Forwarded props for custom field components
   [key: string]: unknown;
 }
 
@@ -64,3 +63,19 @@ export interface FieldComponentProps<S extends BaseFieldSchema = BaseFieldSchema
 
 export type FieldComponent<S extends BaseFieldSchema = BaseFieldSchema> =
   React.ComponentType<FieldComponentProps<S>>;
+
+/**
+ * Helpers passed to the `onSubmit` callback so the consumer can surface
+ * server-side errors (e.g. from a real API) back into the form.
+ */
+export interface SubmitHelpers {
+  /** Display an inline error under a specific field. Marks the field touched. */
+  setFieldError(name: string, error: string): void;
+  /** Display a top-of-form error banner. Pass `null` to clear. */
+  setFormError(error: string | null): void;
+}
+
+export type SubmitHandler = (
+  values: Values,
+  helpers: SubmitHelpers,
+) => void | Promise<void>;

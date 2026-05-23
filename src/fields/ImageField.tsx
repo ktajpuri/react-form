@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useField } from "../useField";
+import { useField, useFieldFocus } from "../useField";
 import type { FieldComponentProps, ImageFieldSchema } from "../types";
 
 function readFileAsDataURL(file: File): Promise<string> {
@@ -15,6 +15,9 @@ export function ImageField({ schema }: FieldComponentProps<ImageFieldSchema>) {
   const { value, error, touched, setValue, onBlur } = useField(schema.name);
   const [reading, setReading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const focusRef = useRef<HTMLElement | null>(null);
+  useFieldFocus(schema.name, focusRef);
+
   const showError = touched && error;
   const id = `field-${schema.name}`;
 
@@ -52,7 +55,13 @@ export function ImageField({ schema }: FieldComponentProps<ImageFieldSchema>) {
       )}
 
       {dataUrl ? (
-        <div className="rf-image-filled">
+        <div
+          ref={(el) => {
+            focusRef.current = el;
+          }}
+          tabIndex={-1}
+          className="rf-image-filled"
+        >
           <img className="rf-image-preview" src={dataUrl} alt="Preview" />
           <div className="rf-image-meta">
             <div className="rf-image-name">Image uploaded</div>
@@ -66,7 +75,14 @@ export function ImageField({ schema }: FieldComponentProps<ImageFieldSchema>) {
           </div>
         </div>
       ) : (
-        <label htmlFor={id} className="rf-dropzone">
+        <label
+          ref={(el) => {
+            focusRef.current = el;
+          }}
+          htmlFor={id}
+          tabIndex={0}
+          className="rf-dropzone"
+        >
           <svg
             className="rf-dropzone-icon"
             width="24"
@@ -96,6 +112,7 @@ export function ImageField({ schema }: FieldComponentProps<ImageFieldSchema>) {
         ref={inputRef}
         id={id}
         type="file"
+        name={schema.name}
         accept={schema.accept ?? "image/*"}
         onChange={handleChange}
         onBlur={onBlur}

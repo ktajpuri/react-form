@@ -1,21 +1,38 @@
 import type { FieldSchema, Values } from "./types";
 import { runValidation } from "./validation";
 
+export type SubmitResult =
+  | { ok: true; values: Values }
+  | { ok: false; errors: Record<string, string> };
+
 export interface FormStore {
+  // Reads
   getValue(name: string): unknown;
   getError(name: string): string | undefined;
   isVisible(name: string): boolean;
   isTouched(name: string): boolean;
   isPending(name: string): boolean;
+  isSubmitting(): boolean;
+  getFormError(): string | null;
   getValues(): Values;
 
+  // Writes
   setValue(name: string, value: unknown): void;
   setTouched(name: string): void;
+  setError(name: string, error: string | null): void;
+  setFormError(error: string | null): void;
+  setSubmitting(submitting: boolean): void;
 
+  // Validation + submit
   validateField(name: string): Promise<string | null>;
   validateAll(): Promise<Record<string, string>>;
-  submit(): Promise<void>;
+  submit(): Promise<SubmitResult>;
 
+  // Focus registry (custom fields can register a focusable element)
+  registerFocus(name: string, fn: () => void): () => void;
+  focusField(name: string): void;
+
+  // Subscriptions
   subscribe(name: string, listener: () => void): () => void;
   subscribeMeta(listener: () => void): () => void;
 }
@@ -23,8 +40,6 @@ export interface FormStore {
 interface StoreOptions {
   schema: FieldSchema[];
   initialValues?: Values;
-  onSubmit: (values: Values) => void;
-  onInvalidSubmit?: (errors: Record<string, string>) => void;
 }
 
 const DEFAULT_VALUES: Record<string, unknown> = {
@@ -35,18 +50,19 @@ const DEFAULT_VALUES: Record<string, unknown> = {
 };
 
 export function createFormStore(opts: StoreOptions): FormStore {
-  const { schema, initialValues = {}, onSubmit, onInvalidSubmit } = opts;
+  const { schema, initialValues = {} } = opts;
 
   const values: Values = {};
   const errors: Record<string, string> = {};
   const touched: Record<string, boolean> = {};
   const pending: Record<string, boolean> = {};
   const visible: Record<string, boolean> = {};
+  let submitting = false;
+  let formError: string | null = null;
 
   const fieldListeners = new Map<string, Set<() => void>>();
   const metaListeners = new Set<() => void>();
-
-  // Dependency graph: field name -> set of field names whose visibleWhen depends on it
+  const focusHandlers = new Map<string, () => void>();
   const visibilityDependents = new Map<string, Set<string>>();
 
   // Initialize values
@@ -115,7 +131,6 @@ export function createFormStore(opts: StoreOptions): FormStore {
       const next = !!field.visibleWhen(values);
       if (next !== visible[depName]) {
         visible[depName] = next;
-        // Clear errors for fields that became hidden
         if (!next && errors[depName]) {
           delete errors[depName];
         }
@@ -140,6 +155,12 @@ export function createFormStore(opts: StoreOptions): FormStore {
     isPending(name) {
       return !!pending[name];
     },
+    isSubmitting() {
+      return submitting;
+    },
+    getFormError() {
+      return formError;
+    },
     getValues() {
       return { ...values };
     },
@@ -148,9 +169,6 @@ export function createFormStore(opts: StoreOptions): FormStore {
       values[name] = value;
       notifyField(name);
       recomputeVisibility(name);
-
-      // Re-validate this field on change ONLY if it has already shown an error.
-      // This lets the error clear as the user fixes the input.
       if (errors[name] !== undefined) {
         void store.validateField(name);
       }
@@ -161,11 +179,35 @@ export function createFormStore(opts: StoreOptions): FormStore {
       void store.validateField(name);
     },
 
+    setError(name, error) {
+      const prev = errors[name];
+      if (error === null || error === undefined) {
+        delete errors[name];
+      } else {
+        errors[name] = error;
+        touched[name] = true; // ensure inline error renders
+      }
+      if (prev !== errors[name]) notifyField(name);
+    },
+
+    setFormError(error) {
+      if (formError !== error) {
+        formError = error;
+        notifyMeta();
+      }
+    },
+
+    setSubmitting(next) {
+      if (submitting !== next) {
+        submitting = next;
+        notifyMeta();
+      }
+    },
+
     async validateField(name) {
       const field = schemaByName.get(name);
       if (!field) return null;
       if (!visible[name]) {
-        // Hidden fields are not validated; clear any stale error
         if (errors[name]) {
           delete errors[name];
           notifyField(name);
@@ -188,7 +230,6 @@ export function createFormStore(opts: StoreOptions): FormStore {
       if (prevError !== errors[name]) {
         notifyField(name);
       } else {
-        // Still need to clear pending indicator
         notifyField(name);
       }
       return result;
@@ -210,22 +251,46 @@ export function createFormStore(opts: StoreOptions): FormStore {
       return out;
     },
 
-    async submit() {
-      // Mark all visible fields as touched
+    async submit(): Promise<SubmitResult> {
       for (const f of schema) {
         if (visible[f.name]) touched[f.name] = true;
       }
       const errs = await store.validateAll();
       notifyMeta();
       if (Object.keys(errs).length > 0) {
-        onInvalidSubmit?.(errs);
-        return;
+        return { ok: false, errors: errs };
       }
       const output: Values = {};
       for (const f of schema) {
         if (visible[f.name]) output[f.name] = values[f.name];
       }
-      onSubmit(output);
+      return { ok: true, values: output };
+    },
+
+    registerFocus(name, fn) {
+      focusHandlers.set(name, fn);
+      return () => {
+        if (focusHandlers.get(name) === fn) focusHandlers.delete(name);
+      };
+    },
+
+    focusField(name) {
+      const handler = focusHandlers.get(name);
+      if (handler) {
+        handler();
+        return;
+      }
+      // Fallback: find an input/select/textarea with this name attribute.
+      if (typeof document === "undefined") return;
+      const el = document.querySelector<HTMLElement>(
+        `input[name="${cssEscape(name)}"]:not([type=file]):not([type=hidden]),` +
+          `select[name="${cssEscape(name)}"],` +
+          `textarea[name="${cssEscape(name)}"]`,
+      );
+      if (el) {
+        el.focus();
+        el.scrollIntoView?.({ behavior: "smooth", block: "center" });
+      }
     },
 
     subscribe(name, listener) {
@@ -247,4 +312,11 @@ export function createFormStore(opts: StoreOptions): FormStore {
   };
 
   return store;
+}
+
+function cssEscape(s: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(s);
+  }
+  return s.replace(/["\\]/g, "\\$&");
 }

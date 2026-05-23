@@ -40,7 +40,8 @@ describe("FieldRegistry", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /submit/i }));
-    expect(onSubmit).toHaveBeenCalledWith({ fav: "#ff0000" });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0][0]).toEqual({ fav: "#ff0000" });
   });
 
   it("per-form `fields` prop overrides context registry", async () => {

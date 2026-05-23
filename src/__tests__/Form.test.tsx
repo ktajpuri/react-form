@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Form } from "../Form";
 import { TextField } from "../fields/TextField";
-import type { FieldComponentProps, FieldSchema, TextFieldSchema } from "../types";
+import type {
+  FieldComponentProps,
+  FieldSchema,
+  TextFieldSchema,
+} from "../types";
 
 describe("<Form/>", () => {
   it("renders all visible field types and submits flat JSON", async () => {
@@ -38,7 +42,8 @@ describe("<Form/>", () => {
     await user.selectOptions(screen.getByLabelText("Country"), "us");
     await user.click(screen.getByRole("button", { name: /submit/i }));
 
-    expect(onSubmit).toHaveBeenCalledWith({
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0][0]).toEqual({
       fullName: "Ada",
       color: "blue",
       country: "us",
@@ -62,7 +67,7 @@ describe("<Form/>", () => {
     await user.clear(input);
     expect(screen.queryByRole("alert")).toBeNull();
 
-    await user.tab(); // blur
+    await user.tab();
     expect(await screen.findByRole("alert")).toHaveTextContent(/required/i);
   });
 
@@ -83,6 +88,54 @@ describe("<Form/>", () => {
     await user.click(screen.getByRole("button", { name: /submit/i }));
     expect(onSubmit).not.toHaveBeenCalled();
     expect(onInvalidSubmit).toHaveBeenCalled();
+  });
+
+  it("focuses the first invalid field on submit", async () => {
+    const schema: FieldSchema[] = [
+      {
+        type: "text",
+        name: "first",
+        label: "First",
+        validate: { required: true },
+      },
+      {
+        type: "text",
+        name: "second",
+        label: "Second",
+        validate: { required: true },
+      },
+    ];
+    render(<Form schema={schema} onSubmit={() => {}} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /submit/i }));
+    expect(document.activeElement).toBe(screen.getByLabelText("First"));
+  });
+
+  it("focuses the second field when the first is valid but second is not", async () => {
+    const schema: FieldSchema[] = [
+      {
+        type: "text",
+        name: "first",
+        label: "First",
+        validate: { required: true },
+      },
+      {
+        type: "text",
+        name: "second",
+        label: "Second",
+        validate: { required: true },
+      },
+    ];
+    render(
+      <Form
+        schema={schema}
+        initialValues={{ first: "filled" }}
+        onSubmit={() => {}}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /submit/i }));
+    expect(document.activeElement).toBe(screen.getByLabelText("Second"));
   });
 
   it("hides conditional fields and excludes them from submission", async () => {
@@ -117,14 +170,14 @@ describe("<Form/>", () => {
 
     expect(screen.queryByLabelText("Admin code")).toBeNull();
     await user.click(screen.getByRole("button", { name: /submit/i }));
-    expect(onSubmit).toHaveBeenCalledWith({ role: "user" });
+    expect(onSubmit.mock.calls[0][0]).toEqual({ role: "user" });
 
     onSubmit.mockClear();
     await user.selectOptions(screen.getByLabelText("Role"), "admin");
     expect(screen.getByLabelText("Admin code")).toBeInTheDocument();
     await user.type(screen.getByLabelText("Admin code"), "secret");
     await user.click(screen.getByRole("button", { name: /submit/i }));
-    expect(onSubmit).toHaveBeenCalledWith({
+    expect(onSubmit.mock.calls[0][0]).toEqual({
       role: "admin",
       adminCode: "secret",
     });
@@ -156,10 +209,108 @@ describe("<Form/>", () => {
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("A"), "abc");
 
-    // B must not re-render while A is being typed into.
     expect(renderCounts.b).toBe(initialB);
-    // A should re-render on each keystroke.
     expect(renderCounts.a).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("<Form/> async submission", () => {
+  it("disables button + shows pending label while onSubmit is in flight", async () => {
+    let resolve!: () => void;
+    const slowSubmit = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          resolve = r;
+        }),
+    );
+
+    render(
+      <Form
+        schema={[{ type: "text", name: "x", label: "X" }]}
+        onSubmit={slowSubmit}
+        submitLabel="Send"
+        submittingLabel="Sending…"
+      />,
+    );
+
+    const user = userEvent.setup();
+    const button = screen.getByRole("button");
+    await user.click(button);
+
+    expect(button).toBeDisabled();
+    expect(button).toHaveTextContent(/sending/i);
+
+    await act(async () => {
+      resolve();
+    });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    expect(button).toHaveTextContent("Send");
+  });
+
+  it("displays form error banner when helpers.setFormError is called", async () => {
+    render(
+      <Form
+        schema={[{ type: "text", name: "x", label: "X" }]}
+        onSubmit={async (_v, { setFormError }) => {
+          setFormError("Server unavailable");
+        }}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /submit/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Server unavailable",
+    );
+  });
+
+  it("displays inline field error when helpers.setFieldError is called", async () => {
+    render(
+      <Form
+        schema={[
+          { type: "text", name: "email", label: "Email" },
+          { type: "text", name: "name", label: "Name" },
+        ]}
+        onSubmit={async (_v, { setFieldError }) => {
+          setFieldError("email", "Already in use");
+        }}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /submit/i }));
+    expect(await screen.findByText("Already in use")).toBeInTheDocument();
+  });
+
+  it("focuses the field that received a server-side error", async () => {
+    render(
+      <Form
+        schema={[
+          { type: "text", name: "name", label: "Name" },
+          { type: "text", name: "email", label: "Email" },
+        ]}
+        onSubmit={async (_v, { setFieldError }) => {
+          setFieldError("email", "Taken");
+        }}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /submit/i }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText("Email")),
+    );
+  });
+
+  it("catches thrown errors and surfaces them as a form error", async () => {
+    render(
+      <Form
+        schema={[{ type: "text", name: "x", label: "X" }]}
+        onSubmit={async () => {
+          throw new Error("boom");
+        }}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /submit/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("boom");
   });
 });
 
@@ -182,9 +333,9 @@ describe("<Form/> image field", () => {
     await user.click(screen.getByRole("button", { name: /submit/i }));
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    const submitted = onSubmit.mock.calls[0][0];
+    const submitted = onSubmit.mock.calls[0][0] as Record<string, unknown>;
     expect(typeof submitted.avatar).toBe("string");
-    expect(submitted.avatar).toMatch(/^data:image\/png;base64,/);
+    expect(submitted.avatar as string).toMatch(/^data:image\/png;base64,/);
   });
 
   it("rejects oversized images on validation", async () => {

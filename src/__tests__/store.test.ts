@@ -25,25 +25,18 @@ describe("createFormStore", () => {
     const store = createFormStore({
       schema: baseSchema,
       initialValues: { name: "Ada" },
-      onSubmit: () => {},
     });
     expect(store.getValue("name")).toBe("Ada");
     expect(store.getValue("role")).toBe("");
   });
 
   it("computes initial visibility from visibleWhen", () => {
-    const store = createFormStore({
-      schema: baseSchema,
-      onSubmit: () => {},
-    });
+    const store = createFormStore({ schema: baseSchema });
     expect(store.isVisible("adminCode")).toBe(false);
   });
 
   it("flips visibility when dependency changes", () => {
-    const store = createFormStore({
-      schema: baseSchema,
-      onSubmit: () => {},
-    });
+    const store = createFormStore({ schema: baseSchema });
     store.setValue("role", "admin");
     expect(store.isVisible("adminCode")).toBe(true);
     store.setValue("role", "user");
@@ -51,10 +44,7 @@ describe("createFormStore", () => {
   });
 
   it("notifies only subscribers of the changed field on setValue", () => {
-    const store = createFormStore({
-      schema: baseSchema,
-      onSubmit: () => {},
-    });
+    const store = createFormStore({ schema: baseSchema });
     const nameListener = vi.fn();
     const roleListener = vi.fn();
     store.subscribe("name", nameListener);
@@ -66,10 +56,7 @@ describe("createFormStore", () => {
   });
 
   it("notifies dependents when visibility flips", () => {
-    const store = createFormStore({
-      schema: baseSchema,
-      onSubmit: () => {},
-    });
+    const store = createFormStore({ schema: baseSchema });
     const adminListener = vi.fn();
     store.subscribe("adminCode", adminListener);
     store.setValue("role", "admin");
@@ -77,10 +64,7 @@ describe("createFormStore", () => {
   });
 
   it("validates a field on setTouched", async () => {
-    const store = createFormStore({
-      schema: baseSchema,
-      onSubmit: () => {},
-    });
+    const store = createFormStore({ schema: baseSchema });
     store.setTouched("name");
     await Promise.resolve();
     await Promise.resolve();
@@ -88,10 +72,7 @@ describe("createFormStore", () => {
   });
 
   it("re-validates after first error on subsequent change", async () => {
-    const store = createFormStore({
-      schema: baseSchema,
-      onSubmit: () => {},
-    });
+    const store = createFormStore({ schema: baseSchema });
     store.setTouched("name");
     await Promise.resolve();
     await Promise.resolve();
@@ -103,57 +84,46 @@ describe("createFormStore", () => {
     expect(store.getError("name")).toBeUndefined();
   });
 
-  it("submit excludes hidden fields and outputs flat key-value", async () => {
-    const onSubmit = vi.fn();
+  it("submit returns ok=true with values excluding hidden fields", async () => {
     const store = createFormStore({
       schema: baseSchema,
       initialValues: { name: "Ada", role: "user" },
-      onSubmit,
     });
-    await store.submit();
-    expect(onSubmit).toHaveBeenCalledWith({ name: "Ada", role: "user" });
+    const result = await store.submit();
+    expect(result).toEqual({
+      ok: true,
+      values: { name: "Ada", role: "user" },
+    });
   });
 
-  it("submit calls onInvalidSubmit when there are errors", async () => {
-    const onSubmit = vi.fn();
-    const onInvalidSubmit = vi.fn();
-    const store = createFormStore({
-      schema: baseSchema,
-      onSubmit,
-      onInvalidSubmit,
-    });
-    await store.submit();
-    expect(onSubmit).not.toHaveBeenCalled();
-    expect(onInvalidSubmit).toHaveBeenCalled();
-    expect(Object.keys(onInvalidSubmit.mock.calls[0][0])).toContain("name");
+  it("submit returns ok=false with errors when invalid", async () => {
+    const store = createFormStore({ schema: baseSchema });
+    const result = await store.submit();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(Object.keys(result.errors)).toContain("name");
+    }
   });
 
   it("submit validates conditionally-visible fields", async () => {
-    const onSubmit = vi.fn();
-    const onInvalidSubmit = vi.fn();
     const store = createFormStore({
       schema: baseSchema,
       initialValues: { name: "Ada", role: "admin" },
-      onSubmit,
-      onInvalidSubmit,
     });
-    await store.submit();
-    expect(onSubmit).not.toHaveBeenCalled();
-    expect(onInvalidSubmit.mock.calls[0][0]).toHaveProperty("adminCode");
+    const result = await store.submit();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors).toHaveProperty("adminCode");
   });
 
   it("submit includes visible conditional fields when valid", async () => {
-    const onSubmit = vi.fn();
     const store = createFormStore({
       schema: baseSchema,
       initialValues: { name: "Ada", role: "admin", adminCode: "abcdef" },
-      onSubmit,
     });
-    await store.submit();
-    expect(onSubmit).toHaveBeenCalledWith({
-      name: "Ada",
-      role: "admin",
-      adminCode: "abcdef",
+    const result = await store.submit();
+    expect(result).toEqual({
+      ok: true,
+      values: { name: "Ada", role: "admin", adminCode: "abcdef" },
     });
   });
 
@@ -161,7 +131,6 @@ describe("createFormStore", () => {
     const store = createFormStore({
       schema: baseSchema,
       initialValues: { name: "Ada", role: "admin" },
-      onSubmit: () => {},
     });
     store.setTouched("adminCode");
     await Promise.resolve();
@@ -171,5 +140,38 @@ describe("createFormStore", () => {
     store.setValue("role", "user");
     expect(store.getError("adminCode")).toBeUndefined();
     expect(store.isVisible("adminCode")).toBe(false);
+  });
+
+  it("setError sets an external error and marks the field touched", () => {
+    const store = createFormStore({ schema: baseSchema });
+    store.setError("name", "Already taken");
+    expect(store.getError("name")).toBe("Already taken");
+    expect(store.isTouched("name")).toBe(true);
+  });
+
+  it("setError(null) clears the error", () => {
+    const store = createFormStore({ schema: baseSchema });
+    store.setError("name", "Boom");
+    store.setError("name", null);
+    expect(store.getError("name")).toBeUndefined();
+  });
+
+  it("setFormError + isSubmitting fire meta listeners", () => {
+    const store = createFormStore({ schema: baseSchema });
+    const meta = vi.fn();
+    store.subscribeMeta(meta);
+    store.setFormError("Boom");
+    expect(store.getFormError()).toBe("Boom");
+    store.setSubmitting(true);
+    expect(store.isSubmitting()).toBe(true);
+    expect(meta).toHaveBeenCalledTimes(2);
+  });
+
+  it("registerFocus + focusField invokes the registered handler", () => {
+    const store = createFormStore({ schema: baseSchema });
+    const handler = vi.fn();
+    store.registerFocus("name", handler);
+    store.focusField("name");
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });

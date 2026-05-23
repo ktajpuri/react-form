@@ -1,5 +1,11 @@
 import { useState } from "react";
 import { Form } from "./Form";
+import {
+  createAccount,
+  USING_MOCK_API,
+  type CreateAccountResponse,
+} from "./api";
+import { MOCK_CONFIG, type MockMode } from "./api/mockApi";
 import type { FieldSchema, Values } from "./types";
 import "./demo.css";
 
@@ -67,9 +73,23 @@ const schema: FieldSchema[] = [
   },
 ];
 
+const MOCK_MODES: { value: MockMode; label: string; description: string }[] = [
+  { value: "success", label: "Success", description: "Happy path" },
+  { value: "field-error", label: "Field error", description: "Email already in use" },
+  { value: "server-error", label: "Server error", description: "Top-of-form 500" },
+  { value: "network-error", label: "Network error", description: "fetch rejects" },
+  { value: "slow", label: "Slow", description: "3.5s delay" },
+];
+
 export function App() {
-  const [submitted, setSubmitted] = useState<Values | null>(null);
-  const [errors, setErrors] = useState<Record<string, string> | null>(null);
+  const [submitted, setSubmitted] = useState<CreateAccountResponse | null>(null);
+  const [submittedValues, setSubmittedValues] = useState<Values | null>(null);
+  const [mockMode, setMockMode] = useState<MockMode>(MOCK_CONFIG.mode);
+
+  function handleModeChange(next: MockMode) {
+    setMockMode(next);
+    MOCK_CONFIG.mode = next;
+  }
 
   return (
     <div className="page">
@@ -86,46 +106,89 @@ export function App() {
           </p>
         </header>
 
+        {USING_MOCK_API && (
+          <section className="mock-panel" aria-label="Mock API controls">
+            <div className="mock-panel-header">
+              <span className="mock-panel-title">Mock API</span>
+              <span className="mock-panel-hint">
+                Pick a response to test how the form handles it.
+              </span>
+            </div>
+            <div className="mock-modes">
+              {MOCK_MODES.map((m) => (
+                <label
+                  key={m.value}
+                  className={`mock-mode ${mockMode === m.value ? "is-active" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="mock-mode"
+                    value={m.value}
+                    checked={mockMode === m.value}
+                    onChange={() => handleModeChange(m.value)}
+                  />
+                  <span className="mock-mode-label">{m.label}</span>
+                  <span className="mock-mode-desc">{m.description}</span>
+                </label>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section className="card">
           <Form
             schema={schema}
             submitLabel="Create account"
-            onSubmit={(values) => {
-              setSubmitted(values);
-              setErrors(null);
-            }}
-            onInvalidSubmit={(errs) => {
-              setErrors(errs);
+            submittingLabel="Creating account…"
+            onSubmit={async (values, { setFieldError, setFormError }) => {
               setSubmitted(null);
+              setSubmittedValues(null);
+              const result = await createAccount(values);
+
+              if (result.ok) {
+                setSubmitted(result.data);
+                setSubmittedValues(values);
+                return;
+              }
+
+              setFormError(result.error.message);
+              if (result.error.fieldErrors) {
+                for (const [name, message] of Object.entries(
+                  result.error.fieldErrors,
+                )) {
+                  setFieldError(name, message);
+                }
+              }
             }}
           />
         </section>
 
-        {errors && (
-          <section className="output output--error">
-            <div className="output-header">
-              <span className="output-title">Validation errors</span>
-              <span className="output-pill output-pill--error">
-                {Object.keys(errors).length}
-              </span>
-            </div>
-            <pre className="output-body">{JSON.stringify(errors, null, 2)}</pre>
-          </section>
-        )}
-
-        {submitted && (
+        {submitted && submittedValues && (
           <section className="output output--success">
             <div className="output-header">
-              <span className="output-title">Submitted payload</span>
-              <span className="output-pill output-pill--success">JSON</span>
+              <span className="output-title">Account created</span>
+              <span className="output-pill output-pill--success">
+                {submitted.id}
+              </span>
             </div>
             <pre className="output-body">
-              {JSON.stringify(truncateImages(submitted), null, 2)}
+              {JSON.stringify(
+                {
+                  response: submitted,
+                  values: truncateImages(submittedValues),
+                },
+                null,
+                2,
+              )}
             </pre>
           </section>
         )}
 
-        <footer className="footer">Built without form libraries.</footer>
+        <footer className="footer">
+          {USING_MOCK_API
+            ? "Using mock API — set VITE_USE_MOCK_API=false to hit the real one."
+            : "Using real API."}
+        </footer>
       </div>
     </div>
   );

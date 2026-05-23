@@ -1,10 +1,14 @@
-import { useField } from "../useField";
+import { useRef } from "react";
+import { useField, useFieldFocus } from "../useField";
 import type { DropdownFieldSchema, FieldComponentProps } from "../types";
 
 export function DropdownField({
   schema,
 }: FieldComponentProps<DropdownFieldSchema>) {
   const { value, error, touched, setValue, onBlur } = useField(schema.name);
+  const selectRef = useRef<HTMLSelectElement>(null);
+  useFieldFocus(schema.name, selectRef);
+
   const showError = touched && error;
   const id = `field-${schema.name}`;
 
@@ -12,6 +16,7 @@ export function DropdownField({
     <div className="rf-field rf-field--dropdown">
       {schema.label && <label htmlFor={id}>{schema.label}</label>}
       <select
+        ref={selectRef}
         id={id}
         name={schema.name}
         value={(value as string) ?? ""}

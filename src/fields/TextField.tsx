@@ -1,8 +1,12 @@
-import { useField } from "../useField";
+import { useRef } from "react";
+import { useField, useFieldFocus } from "../useField";
 import type { FieldComponentProps, TextFieldSchema } from "../types";
 
 export function TextField({ schema }: FieldComponentProps<TextFieldSchema>) {
   const { value, error, touched, setValue, onBlur } = useField(schema.name);
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
+  useFieldFocus(schema.name, inputRef);
+
   const showError = touched && error;
   const id = `field-${schema.name}`;
 
@@ -22,9 +26,16 @@ export function TextField({ schema }: FieldComponentProps<TextFieldSchema>) {
     <div className="rf-field rf-field--text">
       {schema.label && <label htmlFor={id}>{schema.label}</label>}
       {schema.multiline ? (
-        <textarea {...common} />
+        <textarea
+          {...common}
+          ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+        />
       ) : (
-        <input type="text" {...common} />
+        <input
+          type="text"
+          {...common}
+          ref={inputRef as React.RefObject<HTMLInputElement>}
+        />
       )}
       {schema.help && <p className="rf-help">{schema.help}</p>}
       {showError && (

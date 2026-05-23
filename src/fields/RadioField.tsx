@@ -1,8 +1,12 @@
-import { useField } from "../useField";
+import { useRef } from "react";
+import { useField, useFieldFocus } from "../useField";
 import type { FieldComponentProps, RadioFieldSchema } from "../types";
 
 export function RadioField({ schema }: FieldComponentProps<RadioFieldSchema>) {
   const { value, error, touched, setValue, onBlur } = useField(schema.name);
+  const firstRadioRef = useRef<HTMLInputElement>(null);
+  useFieldFocus(schema.name, firstRadioRef);
+
   const showError = touched && error;
   const groupId = `field-${schema.name}`;
 
@@ -13,11 +17,12 @@ export function RadioField({ schema }: FieldComponentProps<RadioFieldSchema>) {
       aria-describedby={showError ? `${groupId}-error` : undefined}
     >
       {schema.label && <legend>{schema.label}</legend>}
-      {schema.options.map((opt) => {
+      {schema.options.map((opt, i) => {
         const id = `${groupId}-${opt.value}`;
         return (
           <label key={opt.value} htmlFor={id}>
             <input
+              ref={i === 0 ? firstRadioRef : undefined}
               type="radio"
               id={id}
               name={schema.name}

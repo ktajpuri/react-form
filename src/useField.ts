@@ -1,4 +1,11 @@
-import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useSyncExternalStore,
+  type RefObject,
+} from "react";
 import type { FormStore } from "./store";
 
 export const FormStoreContext = createContext<FormStore | null>(null);
@@ -29,8 +36,6 @@ export function useField(name: string): UseFieldResult {
     [store, name],
   );
 
-  // We snapshot a small object; React will re-render only when the snapshot changes.
-  // To keep `useSyncExternalStore` stable, we read primitive fields and compose at the top.
   const value = useSyncExternalStore(
     subscribe,
     () => store.getValue(name),
@@ -64,4 +69,49 @@ export function useField(name: string): UseFieldResult {
   const onBlur = useCallback(() => store.setTouched(name), [store, name]);
 
   return { value, error, visible, touched, pending, setValue, onBlur };
+}
+
+/**
+ * Register the element that should receive focus when the form locates
+ * an error on this field (e.g. on submit). Built-in fields use this so
+ * "focus first invalid field" lands on the right element.
+ */
+export function useFieldFocus(
+  name: string,
+  ref: RefObject<HTMLElement | null>,
+) {
+  const store = useFormStore();
+  useEffect(() => {
+    return store.registerFocus(name, () => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      if (typeof el.scrollIntoView === "function") {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+  }, [store, name, ref]);
+}
+
+/** Subscribe to form-level state (submitting, formError). */
+export function useFormState(): {
+  submitting: boolean;
+  formError: string | null;
+} {
+  const store = useFormStore();
+  const subscribe = useCallback(
+    (cb: () => void) => store.subscribeMeta(cb),
+    [store],
+  );
+  const submitting = useSyncExternalStore(
+    subscribe,
+    () => store.isSubmitting(),
+    () => store.isSubmitting(),
+  );
+  const formError = useSyncExternalStore(
+    subscribe,
+    () => store.getFormError(),
+    () => store.getFormError(),
+  );
+  return { submitting, formError };
 }
