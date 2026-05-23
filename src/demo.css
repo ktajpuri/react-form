@@ -524,6 +524,7 @@ button[type="submit"]:disabled {
   line-height: 1.45;
   font-weight: 500;
   margin-bottom: 4px;
+  scroll-margin-top: 24px;
 }
 .rf-form-error svg { flex-shrink: 0; margin-top: 1px; }
 

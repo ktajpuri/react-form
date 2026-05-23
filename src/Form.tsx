@@ -1,4 +1,4 @@
-import { useMemo, useRef, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, type FormEvent } from "react";
 import { createFormStore, type FormStore } from "./store";
 import { FormStoreContext, useFormState } from "./useField";
 import { useFieldRegistry, type FieldRegistry } from "./registry";
@@ -104,9 +104,17 @@ export function Form({
 
 function FormErrorBanner() {
   const { formError } = useFormState();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (formError && ref.current) {
+      ref.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [formError]);
+
   if (!formError) return null;
   return (
-    <div className="rf-form-error" role="alert">
+    <div ref={ref} className="rf-form-error" role="alert">
       <svg
         width="18"
         height="18"

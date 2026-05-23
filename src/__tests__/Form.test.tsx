@@ -299,6 +299,38 @@ describe("<Form/> async submission", () => {
     );
   });
 
+  it("smooth-scrolls the form error banner into view when it appears", async () => {
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView");
+
+    render(
+      <Form
+        schema={[{ type: "text", name: "x", label: "X" }]}
+        onSubmit={async (_v, { setFormError }) => {
+          setFormError("Server unavailable");
+        }}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /submit/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("Server unavailable"),
+    );
+
+    const bannerScroll = scrollSpy.mock.calls.find((args) => {
+      const opts = args[0] as ScrollIntoViewOptions | boolean | undefined;
+      return (
+        typeof opts === "object" &&
+        opts !== null &&
+        opts.behavior === "smooth" &&
+        opts.block === "start"
+      );
+    });
+    expect(bannerScroll).toBeDefined();
+
+    scrollSpy.mockRestore();
+  });
+
   it("catches thrown errors and surfaces them as a form error", async () => {
     render(
       <Form
