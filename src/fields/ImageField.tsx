@@ -32,7 +32,6 @@ export function ImageField({ schema }: FieldComponentProps<ImageFieldSchema>) {
       setValue("");
     } finally {
       setReading(false);
-      // Trigger blur-style validation now that value is set
       onBlur();
     }
   }
@@ -46,7 +45,53 @@ export function ImageField({ schema }: FieldComponentProps<ImageFieldSchema>) {
 
   return (
     <div className="rf-field rf-field--image">
-      {schema.label && <label htmlFor={id}>{schema.label}</label>}
+      {schema.label && (
+        <label htmlFor={id} className="rf-label">
+          {schema.label}
+        </label>
+      )}
+
+      {dataUrl ? (
+        <div className="rf-image-filled">
+          <img className="rf-image-preview" src={dataUrl} alt="Preview" />
+          <div className="rf-image-meta">
+            <div className="rf-image-name">Image uploaded</div>
+            <button
+              type="button"
+              className="rf-image-remove"
+              onClick={clear}
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      ) : (
+        <label htmlFor={id} className="rf-dropzone">
+          <svg
+            className="rf-dropzone-icon"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          <div className="rf-dropzone-text">
+            <span className="rf-dropzone-primary">Click to upload</span>
+            <span className="rf-dropzone-hint">
+              {schema.help ?? "PNG, JPG"}
+            </span>
+          </div>
+        </label>
+      )}
+
       <input
         ref={inputRef}
         id={id}
@@ -54,19 +99,12 @@ export function ImageField({ schema }: FieldComponentProps<ImageFieldSchema>) {
         accept={schema.accept ?? "image/*"}
         onChange={handleChange}
         onBlur={onBlur}
+        className="rf-visually-hidden"
         aria-invalid={!!showError}
         aria-describedby={showError ? `${id}-error` : undefined}
       />
-      {reading && <p className="rf-pending">Reading...</p>}
-      {dataUrl && (
-        <div className="rf-image-preview">
-          <img src={dataUrl} alt="preview" style={{ maxWidth: 200 }} />
-          <button type="button" onClick={clear}>
-            Clear
-          </button>
-        </div>
-      )}
-      {schema.help && <p className="rf-help">{schema.help}</p>}
+
+      {reading && <p className="rf-pending">Reading…</p>}
       {showError && (
         <p id={`${id}-error`} className="rf-error" role="alert">
           {error}

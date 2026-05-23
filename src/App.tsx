@@ -21,18 +21,19 @@ const schema: FieldSchema[] = [
   {
     type: "radio",
     name: "tier",
-    label: "Tier",
+    label: "Plan",
     options: [
       { label: "Free", value: "free" },
       { label: "Pro", value: "pro" },
       { label: "Enterprise", value: "enterprise" },
     ],
-    validate: { required: "Pick a tier" },
+    validate: { required: "Pick a plan" },
   },
   {
     type: "dropdown",
     name: "role",
     label: "Role",
+    placeholder: "Select a role",
     options: [
       { label: "User", value: "user" },
       { label: "Admin", value: "admin" },
@@ -43,16 +44,18 @@ const schema: FieldSchema[] = [
     type: "text",
     name: "adminCode",
     label: "Admin code",
-    help: "Required for admins",
+    placeholder: "At least 6 characters",
+    help: "Required for admin accounts",
     visibleWhen: (v) => v.role === "admin",
     validate: { required: true, minLength: 6 },
   },
   {
     type: "text",
     name: "bio",
-    label: "Bio",
+    label: "Short bio",
+    placeholder: "Tell us a bit about yourself…",
     multiline: true,
-    validate: { maxLength: [200, "Keep it under 200 chars"] },
+    validate: { maxLength: [200, "Keep it under 200 characters"] },
   },
   {
     type: "image",
@@ -60,7 +63,7 @@ const schema: FieldSchema[] = [
     label: "Avatar",
     accept: "image/*",
     maxSizeBytes: 2_000_000,
-    help: "PNG/JPG, max 2 MB",
+    help: "PNG or JPG, up to 2 MB",
   },
 ];
 
@@ -69,35 +72,61 @@ export function App() {
   const [errors, setErrors] = useState<Record<string, string> | null>(null);
 
   return (
-    <div className="demo-container">
-      <h1>react-form demo</h1>
-      <p>No form libraries. Field-level subscriptions. Try toggling Role → Admin.</p>
+    <div className="page">
+      <div className="shell">
+        <header className="hero">
+          <div className="hero-eyebrow">
+            <span className="hero-dot" />
+            Live demo
+          </div>
+          <h1 className="hero-title">Create your account</h1>
+          <p className="hero-subtitle">
+            A schema-driven React form, with no form libraries.
+            Try switching <strong>Role</strong> to <em>Admin</em>.
+          </p>
+        </header>
 
-      <Form
-        schema={schema}
-        onSubmit={(values) => {
-          setSubmitted(values);
-          setErrors(null);
-        }}
-        onInvalidSubmit={(errs) => {
-          setErrors(errs);
-          setSubmitted(null);
-        }}
-      />
+        <section className="card">
+          <Form
+            schema={schema}
+            submitLabel="Create account"
+            onSubmit={(values) => {
+              setSubmitted(values);
+              setErrors(null);
+            }}
+            onInvalidSubmit={(errs) => {
+              setErrors(errs);
+              setSubmitted(null);
+            }}
+          />
+        </section>
 
-      {errors && (
-        <div className="output">
-          <h2>Validation errors</h2>
-          <pre>{JSON.stringify(errors, null, 2)}</pre>
-        </div>
-      )}
+        {errors && (
+          <section className="output output--error">
+            <div className="output-header">
+              <span className="output-title">Validation errors</span>
+              <span className="output-pill output-pill--error">
+                {Object.keys(errors).length}
+              </span>
+            </div>
+            <pre className="output-body">{JSON.stringify(errors, null, 2)}</pre>
+          </section>
+        )}
 
-      {submitted && (
-        <div className="output">
-          <h2>Submitted JSON</h2>
-          <pre>{JSON.stringify(truncateImages(submitted), null, 2)}</pre>
-        </div>
-      )}
+        {submitted && (
+          <section className="output output--success">
+            <div className="output-header">
+              <span className="output-title">Submitted payload</span>
+              <span className="output-pill output-pill--success">JSON</span>
+            </div>
+            <pre className="output-body">
+              {JSON.stringify(truncateImages(submitted), null, 2)}
+            </pre>
+          </section>
+        )}
+
+        <footer className="footer">Built without form libraries.</footer>
+      </div>
     </div>
   );
 }
@@ -106,7 +135,7 @@ function truncateImages(v: Values): Values {
   const out: Values = {};
   for (const [k, val] of Object.entries(v)) {
     if (typeof val === "string" && val.startsWith("data:image/")) {
-      out[k] = `${val.slice(0, 40)}... (${val.length} chars)`;
+      out[k] = `${val.slice(0, 48)}… (${val.length} chars)`;
     } else {
       out[k] = val;
     }
